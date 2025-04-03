@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   runApp(MyApp());
@@ -35,6 +37,17 @@ List<Map<String, dynamic>> productos = [];
     });
   }
 
+    void editarProducto(int index, Map<String, dynamic> producto) {
+    setState(() {
+      productos[index] = producto;
+    });
+  }
+  
+  void eliminarProducto(int index) {
+    setState(() {
+      productos.removeAt(index);
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,11 +88,30 @@ List<Map<String, dynamic>> productos = [];
             ),
             ListTile(
               leading: Icon(Icons.shopping_basket),
-              title: const Text('Productos'),
+              title: Text('Productos (${productos.length})'),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => ProductosScreen(productos:productos))
+                  MaterialPageRoute(builder: (context) => ProductosScreen(
+                  productos: productos,
+                  onEdit: (index) async {
+                    Map<String, dynamic> productToEdit = productos[index];
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddProductScreen(
+                          scannedCode: productToEdit['name'],
+                          onSave: (editedProduct) {
+                            editarProducto(index, editedProduct);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                  onDelete: (index) {
+                    eliminarProducto(index);
+                  },
+                  ))
                 );
               },
             ),
@@ -232,7 +264,7 @@ class QRScannerPage extends StatelessWidget {
         onDetect: (capture) {
           final List<Barcode> barcodes = capture.barcodes;
           for (final barcode in barcodes) {
-            if (barcode.rawValue != null) {
+            if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
               Navigator.pop(context, barcode.rawValue);
               break;
             }
@@ -244,10 +276,16 @@ class QRScannerPage extends StatelessWidget {
 }
 
 class AddProductScreen extends StatefulWidget {
-  final String scannedCode;
+  final String? scannedCode;
+  final Map<String, dynamic>? initialProduct;
   final Function(Map<String, dynamic>) onSave;
 
-  const AddProductScreen({super.key, required this.scannedCode, required this.onSave});
+  const AddProductScreen({
+    super.key,
+    this.scannedCode,
+    this.initialProduct,
+    required this.onSave,
+  });
 
   @override
   State<AddProductScreen> createState() => _AddProductScreenState();
@@ -257,64 +295,104 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController quantityController = TextEditingController();
   DateTime? expirationDate;
+  File? _imageFile;
+
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    // Opcional: Puedes prellenar el nombre con el código escaneado, o dejarlo vacío.
-    nameController.text = widget.scannedCode;
+    if (widget.initialProduct != null) {
+      nameController.text = widget.initialProduct!['name'] ?? '';
+      quantityController.text = widget.initialProduct!['quantity'] ?? '';
+      expirationDate = widget.initialProduct!['expirationDate'] != null
+          ? DateTime.parse(widget.initialProduct!['expirationDate'])
+          : null;
+      if (widget.initialProduct!['image'] != null) {
+        _imageFile = File(widget.initialProduct!['image']);
+      }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? pickedFile =
+        await _picker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Agregar Producto')),
+      appBar: AppBar(
+        title:
+            Text(widget.initialProduct == null ? 'Agregar Producto' : 'Editar Producto'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(labelText: 'Nombre del Producto'),
-            ),
-            TextField(
-              controller: quantityController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(labelText: 'Cantidad'),
-            ),
-            const SizedBox(height: 10),
-            Text(expirationDate == null
-                ? 'Seleccionar fecha de expiración'
-                : 'Expira el: ${expirationDate!.toLocal()}'),
-            ElevatedButton(
-              onPressed: () async {
-                DateTime? pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100),
-                );
-                if (pickedDate != null) {
-                  setState(() {
-                    expirationDate = pickedDate;
-                  });
-                }
-              },
-              child: Text('Seleccionar Fecha'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                widget.onSave({
-                  'name': nameController.text,
-                  'quantity': quantityController.text,
-                  'expirationDate': expirationDate.toString(),
-                });
-                Navigator.pop(context);
-              },
-              child: Text('Guardar Producto'),
-            ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: _pickImage,
+                child: _imageFile != null
+                    ? Image.file(_imageFile!,
+                        width: 100, height: 100, fit: BoxFit.cover)
+                    : Image.asset('assets/camaras.png',
+                        width: 100, height: 100, fit: BoxFit.cover),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Nombre del Producto'),
+              ),
+              TextField(
+                controller: quantityController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Cantidad'),
+              ),
+              const SizedBox(height: 10),
+              Text(expirationDate == null
+                  ? 'Seleccionar fecha de expiración'
+                  : 'Expira en: ${expirationDate!.difference(DateTime.now()).inDays} días'),
+              ElevatedButton(
+                onPressed: () async {
+                  DateTime? pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: expirationDate ?? DateTime.now(),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2100),
+                  );
+                  if (pickedDate != null) {
+                    setState(() {
+                      expirationDate = pickedDate;
+                    });
+                  }
+                },
+                child: const Text('Seleccionar Fecha'),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Map<String, dynamic> product = {
+                    'name': nameController.text,
+                    'quantity': quantityController.text,
+                    'expirationDate':
+                        expirationDate?.toIso8601String() ?? '',
+                    'image': _imageFile?.path,
+                  };
+                  widget.onSave(product);
+                  Navigator.pop(context);
+                },
+                child: Text(widget.initialProduct == null
+                    ? 'Guardar Producto'
+                    : 'Actualizar Producto'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -323,28 +401,94 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
 class ProductosScreen extends StatelessWidget {
   final List<Map<String, dynamic>> productos;
+  final Function(int) onEdit;
+  final Function(int) onDelete;
 
-  const ProductosScreen({super.key, required this.productos});
+  const ProductosScreen({
+    super.key,
+    required this.productos,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Productos Agregados')),
+      appBar: AppBar(title: const Text('Productos Agregados')),
       body: productos.isEmpty
-          ? Center(child: Text('No hay productos agregados'))
+          ? const Center(child: Text('No hay productos agregados'))
           : ListView.builder(
               itemCount: productos.length,
               itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(productos[index]['name']),
-                  subtitle: Text(
-                      'Cantidad: ${productos[index]['quantity']}\nExpira: ${productos[index]['expirationDate']}'),
+                final producto = productos[index];
+                DateTime expDate = DateTime.parse(producto['expirationDate']);
+                int daysRemaining = expDate.difference(DateTime.now()).inDays;
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  child: ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: producto['image'] != null
+                          ? Image.file(
+                              File(producto['image']),
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.asset(
+                              'assets/camaras.png',
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                            ),
+                    ),
+                    title: Text(producto['name'],
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Cantidad: ${producto['quantity']}'),
+                        Text('Expira en: $daysRemaining días',
+                            style: TextStyle(
+                                color: _getExpirationColor(daysRemaining))),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () {
+                            onEdit(index);
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            onDelete(index);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),
     );
   }
+
+  Color _getExpirationColor(int daysRemaining) {
+    if (daysRemaining < 0) {
+      return Colors.red; // Caducado
+    } else if (daysRemaining <= 3) {
+      return Colors.orange; // Próximo a caducar
+    } else {
+      return Colors.green; // En buen estado
+    }
+  }
 }
+
+
 
 
 /*class _InicioState extends State<Inicio> {
