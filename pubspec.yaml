@@ -50,6 +50,8 @@ dependencies:
   device_info_plus: ^11.3.3
   android_alarm_manager_plus: ^4.0.7
   provider: ^6.1.4
+  url_launcher: ^6.3.1
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

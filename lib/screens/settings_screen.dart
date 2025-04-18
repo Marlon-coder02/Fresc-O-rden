@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,8 +12,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool isDarkMode = false; // Estado para el tema oscuro
-  bool notificationsEnabled = true; // Estado para las notificaciones
+  bool isDarkMode = false;
+  bool notificationsEnabled = true;
+  String selectedLanguage = 'Español';
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +34,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {
                 isDarkMode = value;
               });
-              // Aquí puedes agregar lógica para cambiar el tema global
             },
           ),
           const Divider(),
@@ -39,11 +43,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Notificaciones'),
             subtitle: const Text('Recibe recordatorios y alertas'),
             value: notificationsEnabled,
-            onChanged: (value) {
+            onChanged: (value) async {
               setState(() {
                 notificationsEnabled = value;
               });
-              // Aquí puedes agregar lógica para manejar notificaciones
+
+              if (value) {
+                await AndroidAlarmManager.periodic(
+                  const Duration(hours: 24),
+                  0,
+                  () => print("Notificación simulada"),
+                  wakeup: true,
+                );
+              } else {
+                await AndroidAlarmManager.cancel(0);
+              }
             },
           ),
           const Divider(),
@@ -51,10 +65,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Idioma
           ListTile(
             title: const Text('Idioma'),
-            subtitle: const Text('Selecciona el idioma de la aplicación'),
+            subtitle: Text('Idioma actual: $selectedLanguage'),
             trailing: const Icon(Icons.language),
             onTap: () {
-              // Aquí puedes mostrar un diálogo para seleccionar el idioma
               showDialog(
                 context: context,
                 builder: (context) {
@@ -66,15 +79,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ListTile(
                           title: const Text('Español'),
                           onTap: () {
+                            setState(() => selectedLanguage = 'Español');
                             Navigator.pop(context);
-                            // Cambiar idioma a español
                           },
                         ),
                         ListTile(
                           title: const Text('Inglés'),
                           onTap: () {
+                            setState(() => selectedLanguage = 'Inglés');
                             Navigator.pop(context);
-                            // Cambiar idioma a inglés
                           },
                         ),
                       ],
@@ -86,50 +99,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // Acerca de
+          // Eliminar cuenta
           ListTile(
-            title: const Text('Acerca de'),
-            subtitle: const Text('Información sobre la aplicación'),
-            trailing: const Icon(Icons.info),
+            title: const Text('Eliminar cuenta'),
+            subtitle: const Text('Elimina tu cuenta y datos permanentemente'),
+            trailing: const Icon(Icons.delete_forever, color: Colors.red),
             onTap: () {
-              Navigator.pushNamed(context, '/about'); // Navegar a la pantalla "Acerca de"
-            },
-          ),
-          const Divider(),
-
-          // Cerrar sesión
-          ListTile(
-            title: const Text('Cerrar sesión'),
-            subtitle: const Text('Salir de tu cuenta'),
-            trailing: const Icon(Icons.logout),
-            onTap: () {
-              // Aquí puedes agregar lógica para cerrar sesión
-              showDialog(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                    title: const Text('Cerrar sesión'),
-                    content: const Text('¿Estás seguro de que deseas cerrar sesión?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancelar'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          // Lógica para cerrar sesión
-                        },
-                        child: const Text('Cerrar sesión'),
-                      ),
-                    ],
-                  );
-                },
-              );
+              _showConfirmationDialog();
             },
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _showConfirmationDialog() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Eliminar cuenta'),
+          content: const Text(
+              '¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer y todos tus datos serán eliminados.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _deleteAccount();
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Eliminar datos del usuario en Firestore
+        await FirebaseFirestore.instance.collection('usuarios').doc(user.uid).delete();
+
+        // Eliminar la cuenta del usuario
+        await user.delete();
+      }
+
+      // Redirigir al login después de eliminar
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/');
+      }
+    } catch (e) {
+      print('Error al eliminar la cuenta: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al eliminar la cuenta. Intenta nuevamente.')),
+      );
+    }
   }
 }
