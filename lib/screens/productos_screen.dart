@@ -9,6 +9,7 @@ class ProductosScreen extends StatefulWidget {
   final Function(int) onEdit;
   final Function(int) onDelete;
 
+  // ignore: use_super_parameters
   const ProductosScreen({
     Key? key,
     required this.productos,
@@ -17,6 +18,7 @@ class ProductosScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
+  // ignore: library_private_types_in_public_api
   _ProductosScreenState createState() => _ProductosScreenState();
 }
 

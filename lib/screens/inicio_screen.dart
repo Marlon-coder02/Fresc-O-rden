@@ -20,10 +20,9 @@ class _InicioScreenState extends State<InicioScreen> {
         @override
       void initState() {
         super.initState();
-        cargarProductos();
         _cargarProductosDesdeFirestore();
       }
-      void _cargarProductosDesdeFirestore() async {
+      Future<void> _cargarProductosDesdeFirestore() async {
         final user = FirebaseAuth.instance.currentUser;
         if (user == null) {
           print('El usuario no está autenticado');
@@ -37,90 +36,77 @@ class _InicioScreenState extends State<InicioScreen> {
               .collection('productos')
               .get();
 
-          // Ahora estamos usando el ID del documento de Firestore directamente
-          productos = snapshot.docs.map((doc) {
+          print('Cargando productos desde Firestore...');
+          print('Productos antes de limpiar: ${productos.length}');
+          productos.clear(); // Limpiar la lista antes de agregar nuevos datos
+          print('Productos después de limpiar: ${productos.length}');
+
+          final productosActualizados = snapshot.docs.map((doc) {
             final data = doc.data();
-            data['id'] = doc.id; // Añadimos el ID del documento directamente a los datos
+            data['id'] = doc.id; // Añadir el ID del documento
             return data;
           }).toList();
 
-          setState(() {});
+          setState(() {
+            productos.addAll(productosActualizados);
+            productosFiltrados = List.from(productos); // Sincronizar ambas listas
+          });
+
+          print('Productos cargados: ${productos.length}');
         } catch (e) {
           print('Error al cargar productos: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error al cargar los productos')),
+          );
         }
       }
-
-        Future<void> cargarProductos() async {
-          try {
-            final snapshot = await FirebaseFirestore.instance
-                .collection('usuarios')
-                .doc(FirebaseAuth.instance.currentUser!.uid)
-                .collection('productos')
-                .get();
-
-            // Mapear los productos con el ID
-            List<Map<String, dynamic>> productos = snapshot.docs.map((doc) {
-              final data = doc.data();
-              data['id'] = doc.id;  // Asignar el ID del documento a cada producto
-              return data;
-            }).toList();
-
-            // Actualizar la lista de productos filtrados
-            setState(() {
-              productosFiltrados = productos;
-            });
-          } catch (e) {
-            print('Error al cargar los productos: $e');
-          }
-        }
-
-
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   List<Map<String, dynamic>> productos = [];
   List<Map<String, dynamic>> productosFiltrados = [];
 
-  void agregarOActualizarProducto(Map<String, dynamic> nuevoProducto) async {
-    String nuevoBarcode = nuevoProducto['barcode'] ?? '';
-    bool encontrado = false;
+    void agregarOActualizarProducto(Map<String, dynamic> nuevoProducto) async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-    for (int i = 0; i < productos.length; i++) {
-      if (nuevoBarcode.isNotEmpty &&
-          productos[i]['barcode'] == nuevoBarcode) {
-        int cantidadActual = int.tryParse(productos[i]['quantity'] ?? '0') ?? 0;
-        int cantidadNueva = int.tryParse(nuevoProducto['quantity'] ?? '0') ?? 0;
-        productos[i]['quantity'] = (cantidadActual + cantidadNueva).toString();
-        encontrado = true;
-        break;
-      }
-    }
+      final productosRef = FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .collection('productos');
 
-    if (!encontrado) {
-      productos.add(nuevoProducto);
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
       try {
-        await FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(user.uid)
-            .collection('productos')
-            .add({
-          'name': nuevoProducto['name'],
-          'barcode': nuevoProducto['barcode'],
-          'quantity': nuevoProducto['quantity'],
-          'unit': nuevoProducto['unit'],
-          'imagePath': nuevoProducto['imagePath'],
-          'expiryDate': nuevoProducto['expiryDate'],
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        // Verificar si el producto ya existe
+        final querySnapshot = await productosRef
+            .where('barcode', isEqualTo: nuevoProducto['barcode'])
+            .get();
+
+        if (querySnapshot.docs.isNotEmpty) {
+          // Si el producto ya existe, actualiza su cantidad
+          final existingDoc = querySnapshot.docs.first;
+          final existingData = existingDoc.data();
+          final existingQuantity = int.tryParse(existingData['quantity'] ?? '0') ?? 0;
+          final newQuantity = existingQuantity +
+              (int.tryParse(nuevoProducto['quantity'] ?? '0') ?? 0);
+
+          await productosRef.doc(existingDoc.id).update({'quantity': newQuantity.toString()});
+        } else {
+          // Si el producto no existe, agrégalo
+          await productosRef.add({
+            'name': nuevoProducto['name'],
+            'barcode': nuevoProducto['barcode'],
+            'quantity': nuevoProducto['quantity'],
+            'unit': nuevoProducto['unit'],
+            'imagePath': nuevoProducto['imagePath'],
+            'expiryDate': nuevoProducto['expiryDate'],
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
       } catch (e) {
         print('Error guardando producto en Firestore: $e');
       }
-    }
 
-    setState(() {});
-  }
+      // Actualizar la lista local
+      await _cargarProductosDesdeFirestore();
+    }
   void editarProducto(int index, Map<String, dynamic> productoEditado) {
     setState(() {
       productos[index] = productoEditado;
@@ -160,9 +146,11 @@ void eliminarProductoConConfirmacion(int index) async {
                     productos.removeAt(index); // También lo quitamos de la lista local
                   });
                 } else {
+                  // ignore: avoid_print
                   print('Producto sin ID válido o usuario no autenticado');
                 }
               } catch (e) {
+                // ignore: avoid_print
                 print('Error al eliminar producto: $e');
               }
             },
@@ -226,35 +214,36 @@ void eliminarProductoConConfirmacion(int index) async {
             ListTile(
               leading: const Icon(Icons.shopping_basket),
               title: Text('Productos (${productos.length})'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ProductosScreen(
-                      productos: productos,
-                      onEdit: (index) async {
-                        Map<String, dynamic> productoAEditar = productos[index];
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AddProductScreen(
-                              initialProduct: productoAEditar,
-                              existingProducts: productos,
-                              onSave: (editedProduct) {
-                                editarProducto(index, editedProduct);
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                      onDelete: (index) {
-                        eliminarProductoConConfirmacion(index);
-                      },
-                    ),
-                  ),
-                );
-              },
+          onTap: () async {
+  await _cargarProductosDesdeFirestore(); // Asegúrate de que la lista esté actualizada
+  Navigator.pop(context);
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => ProductosScreen(
+        productos: productos,
+        onEdit: (index) async {
+          Map<String, dynamic> productoAEditar = productos[index];
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddProductScreen(
+                initialProduct: productoAEditar,
+                existingProducts: productos,
+                onSave: (editedProduct) {
+                  editarProducto(index, editedProduct);
+                },
+              ),
+            ),
+          );
+        },
+        onDelete: (index) {
+          eliminarProductoConConfirmacion(index);
+        },
+      ),
+    ),
+  );
+},
             ),
             ListTile(
               leading: const Icon(Icons.fastfood),

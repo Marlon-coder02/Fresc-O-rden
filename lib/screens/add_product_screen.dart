@@ -25,6 +25,7 @@ class AddProductScreen extends StatefulWidget {
 }
 
 class _AddProductScreenState extends State<AddProductScreen> {
+  bool _isSaving = false;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _barcodeController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController(text: '1');
@@ -99,68 +100,92 @@ Future<void> _scheduleNotification(String productName, DateTime expiryDate) asyn
 
 
 void _guardarProducto() async {
+  if (_isSaving) return; // Evita múltiples envíos
+  setState(() {
+    _isSaving = true; // Indicar que se está guardando
+  });
+
   final name = _nameController.text.trim();
   final quantity = _quantityController.text.trim();
+  final barcode = _barcodeController.text.trim();
 
-  // Verificar que el usuario esté autenticado
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Debes iniciar sesión para guardar un producto')),
     );
+    setState(() {
+      _isSaving = false; // Restablecer el estado
+    });
     return;
   }
 
-  // Validar los campos del formulario
   if (name.isEmpty || quantity.isEmpty || int.tryParse(quantity) == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Por favor, completa todos los campos correctamente')),
     );
+    setState(() {
+      _isSaving = false; // Restablecer el estado
+    });
     return;
   }
 
-  // Crear el mapa del producto
-  final producto = {
-    'name': name,
-    'barcode': _barcodeController.text.trim(),
-    'quantity': quantity,
-    'unit': _selectedUnit,
-    'image': _imageFile?.path,
-    'expirationDate': _expiryDate?.toIso8601String(),
-    'createdAt': FieldValue.serverTimestamp(),
-  };
-
   try {
-    // Guardar el producto en la subcolección del usuario en Firestore
-    final docRef = await FirebaseFirestore.instance
+    final productosRef = FirebaseFirestore.instance
         .collection('usuarios')
         .doc(user.uid)
-        .collection('productos')
-        .add(producto);
+        .collection('productos');
 
-    // Obtener el ID generado automáticamente por Firestore
-    final generatedId = docRef.id;
+    // Verificar si el producto ya existe
+    final querySnapshot = await productosRef.where('barcode', isEqualTo: barcode).get();
 
-    // Asignar el ID generado al mapa del producto
-    producto['id'] = generatedId;
+    if (querySnapshot.docs.isNotEmpty) {
+      // Si el producto ya existe, actualiza su cantidad
+      final existingDoc = querySnapshot.docs.first;
+      final existingData = existingDoc.data();
+      final existingQuantity = int.tryParse(existingData['quantity'] ?? '0') ?? 0;
+      final newQuantity = existingQuantity + int.parse(quantity);
 
-    // Llamar al callback onSave con el producto actualizado
-    widget.onSave(producto);
+      await productosRef.doc(existingDoc.id).update({'quantity': newQuantity.toString()});
 
-    // Programar una notificación si hay una fecha de vencimiento válida
-    if (_expiryDate != null) {
-      await _scheduleNotification(name, _expiryDate!);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Producto actualizado correctamente')),
+      );
+    } else {
+      // Si el producto no existe, agrégalo
+      final producto = {
+        'name': name,
+        'barcode': barcode,
+        'quantity': quantity,
+        'unit': _selectedUnit,
+        'image': _imageFile?.path,
+        'expirationDate': _expiryDate?.toIso8601String(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      final docRef = await productosRef.add(producto);
+
+      producto['id'] = docRef.id;
+      widget.onSave(producto);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Producto guardado correctamente')),
+      );
     }
 
-    // Cerrar la pantalla
     Navigator.pop(context);
   } catch (e) {
     print('Error al guardar producto: $e');
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Error al guardar el producto')),
     );
+  } finally {
+    setState(() {
+      _isSaving = false; // Restablecer el estado
+    });
   }
 }
+
 
   Future<void> _pickImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.camera);
@@ -295,8 +320,10 @@ void _guardarProducto() async {
             const SizedBox(height: 20),
             Center(
               child: ElevatedButton(
-                onPressed: _guardarProducto,
-                child: const Text('Guardar'),
+                onPressed: _isSaving ? null : _guardarProducto, // Deshabilitar si está guardando
+                child: _isSaving
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Guardar'),
               ),
             ),
           ],
