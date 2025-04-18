@@ -1,5 +1,5 @@
-// lib/screens/recetas_screen.dart
 import 'package:flutter/material.dart';
+import 'detalle_receta_screen.dart';
 
 class RecetasScreen extends StatefulWidget {
   final List<Map<String, dynamic>> productosInventario;
@@ -13,49 +13,91 @@ class RecetasScreen extends StatefulWidget {
 class _RecetasScreenState extends State<RecetasScreen> {
   bool mostrarSoloDisponibles = false;
 
-  // Lista de recetas colombianas
-  final List<Map<String, dynamic>> recetas = [
-    {
-      'nombre': 'Arepa con queso',
-      'ingredientes': ['arepa', 'queso', 'mantequilla'],
-      'imagen': 'assets/arepa.png',
-    },
-    {
-      'nombre': 'Huevos pericos',
-      'ingredientes': ['huevos', 'tomate', 'cebolla', 'aceite', 'sal'],
-      'imagen': 'assets/huevos_pericos.png',
-    },
-    {
-      'nombre': 'Caldo de papa',
-      'ingredientes': ['papas', 'cebolla', 'ajo', 'agua', 'sal'],
-      'imagen': 'assets/caldo_papa.png',
-    },
-    {
-      'nombre': 'Arroz con huevo',
-      'ingredientes': ['arroz', 'huevo', 'aceite', 'sal'],
-      'imagen': 'assets/arroz_huevo.png',
-    },
-    {
-      'nombre': 'Changua',
-      'ingredientes': ['leche', 'agua', 'huevo', 'cebolla', 'pan', 'sal'],
-      'imagen': 'assets/changua.png',
-    },
-  ];
+  // Lista de recetas colombianas con cantidades requeridas
+final List<Map<String, dynamic>> recetas = [
+  {
+    'nombre': 'Arepa con queso',
+    'personas': 2, // Número de personas
+    'ingredientes': [
+      {'nombre': 'arepa', 'cantidad': 2, 'unidad': 'unidades'},
+      {'nombre': 'queso', 'cantidad': 100, 'unidad': 'gramos'},
+      {'nombre': 'mantequilla', 'cantidad': 20, 'unidad': 'gramos'},
+    ],
+    'imagen': 'assets/arepa.png',
+  },
+  {
+    'nombre': 'Huevos pericos',
+    'personas': 2, // Número de personas
+    'ingredientes': [
+      {'nombre': 'huevos', 'cantidad': 3, 'unidad': 'unidades'},
+      {'nombre': 'tomate', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'cebolla', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'aceite', 'cantidad': 10, 'unidad': 'ml'},
+      {'nombre': 'sal', 'cantidad': 1, 'unidad': 'pizca'},
+    ],
+    'imagen': 'assets/huevos_pericos.png',
+  },
+  {
+    'nombre': 'Caldo de papa',
+    'personas': 4, // Número de personas
+    'ingredientes': [
+      {'nombre': 'papas', 'cantidad': 3, 'unidad': 'unidades'},
+      {'nombre': 'cebolla', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'ajo', 'cantidad': 2, 'unidad': 'dientes'},
+      {'nombre': 'agua', 'cantidad': 1, 'unidad': 'litro'},
+      {'nombre': 'sal', 'cantidad': 1, 'unidad': 'pizca'},
+    ],
+    'imagen': 'assets/caldo_papa.png',
+  },
+  {
+    'nombre': 'Arroz con pollo',
+    'personas': 4, // Número de personas
+    'ingredientes': [
+      {'nombre': 'arroz', 'cantidad': 2, 'unidad': 'tazas'},
+      {'nombre': 'pollo', 'cantidad': 500, 'unidad': 'gramos'},
+      {'nombre': 'zanahoria', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'cebolla', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'pimentón', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'agua', 'cantidad': 4, 'unidad': 'tazas'},
+      {'nombre': 'sal', 'cantidad': 1, 'unidad': 'pizca'},
+    ],
+    'imagen': 'assets/arroz_pollo.png',
+  },
+  {
+    'nombre': 'Changua',
+    'personas': 2, // Número de personas
+    'ingredientes': [
+      {'nombre': 'leche', 'cantidad': 500, 'unidad': 'ml'},
+      {'nombre': 'agua', 'cantidad': 500, 'unidad': 'ml'},
+      {'nombre': 'huevo', 'cantidad': 2, 'unidad': 'unidades'},
+      {'nombre': 'cebolla', 'cantidad': 1, 'unidad': 'unidad'},
+      {'nombre': 'pan', 'cantidad': 2, 'unidad': 'rebanadas'},
+      {'nombre': 'sal', 'cantidad': 1, 'unidad': 'pizca'},
+    ],
+    'imagen': 'assets/changua.png',
+  },
+];
 
   // Comprueba si en el inventario se tienen todos los ingredientes necesarios para una receta.
-  bool tieneTodosLosIngredientes(List<String> necesarios) {
+  Map<String, dynamic> verificarIngredientes(List<Map<String, dynamic>> necesarios) {
     final nombresInventario = widget.productosInventario
         .map((producto) => producto['name'].toString().toLowerCase())
         .toList();
 
-    return necesarios.every((ingrediente) =>
-        nombresInventario.contains(ingrediente.toLowerCase()));
+    final faltantes = necesarios
+        .where((ingrediente) => !nombresInventario.contains(ingrediente['nombre'].toLowerCase()))
+        .toList();
+
+    return {
+      'tieneTodos': faltantes.isEmpty,
+      'faltantes': faltantes,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     final recetasFiltradas = mostrarSoloDisponibles
-        ? recetas.where((receta) => tieneTodosLosIngredientes(receta['ingredientes'])).toList()
+        ? recetas.where((receta) => verificarIngredientes(receta['ingredientes'])['tieneTodos']).toList()
         : recetas;
 
     return Scaffold(
@@ -83,7 +125,9 @@ class _RecetasScreenState extends State<RecetasScreen> {
               itemCount: recetasFiltradas.length,
               itemBuilder: (context, index) {
                 final receta = recetasFiltradas[index];
-                final disponible = tieneTodosLosIngredientes(receta['ingredientes']);
+                final resultado = verificarIngredientes(receta['ingredientes']);
+                final disponible = resultado['tieneTodos'];
+                final faltantes = resultado['faltantes'];
 
                 return Card(
                   color: disponible ? Colors.white : Colors.grey[200],
@@ -97,11 +141,26 @@ class _RecetasScreenState extends State<RecetasScreen> {
                       fit: BoxFit.cover,
                     ),
                     title: Text(receta['nombre']),
-                    subtitle: Text("Ingredientes: ${receta['ingredientes'].join(', ')}\n${disponible ? 'Puedes preparar esta receta' : 'Faltan ingredientes'}"),
+                    subtitle: Text(
+                      disponible
+                          ? 'Puedes preparar esta receta'
+                          : 'Faltan: ${faltantes.map((f) => f['nombre']).join(', ')}',
+                    ),
                     trailing: Icon(
                       disponible ? Icons.check_circle : Icons.warning,
                       color: disponible ? Colors.green : Colors.orange,
                     ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DetalleRecetaScreen(
+                            receta: receta,
+                            faltantes: faltantes,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
@@ -109,4 +168,3 @@ class _RecetasScreenState extends State<RecetasScreen> {
     );
   }
 }
-

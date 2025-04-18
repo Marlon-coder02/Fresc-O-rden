@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'screens/login_screen.dart';
 import 'screens/inicio_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await AndroidAlarmManager.initialize(); // Inicializar AndroidAlarmManager
   runApp(const MyApp());
 }
 

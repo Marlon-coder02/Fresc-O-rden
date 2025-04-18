@@ -5,12 +5,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter/services.dart';
+import 'package:android_intent_plus/android_intent.dart';
 
 class AddProductScreen extends StatefulWidget {
   final String? scannedCode;
   final List<Map<String, dynamic>> existingProducts;
   final Function(Map<String, dynamic>) onSave;
   final Map<String, dynamic>? initialProduct;
+  final bool isManualAdd; // Nueva propiedad para indicar si es un agregado manual
 
   const AddProductScreen({
     super.key,
@@ -18,6 +22,7 @@ class AddProductScreen extends StatefulWidget {
     required this.existingProducts,
     required this.onSave,
     this.initialProduct,
+    this.isManualAdd = false, // Valor predeterminado: no es manual
   });
 
   @override
@@ -26,8 +31,9 @@ class AddProductScreen extends StatefulWidget {
 
 class _AddProductScreenState extends State<AddProductScreen> {
   bool _isSaving = false;
-  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _barcodeController = TextEditingController();
+  bool _isManualAdd = false;
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController(text: '1');
 
   String _selectedUnit = 'unidad';
@@ -35,13 +41,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
   DateTime? _expiryDate;
   final picker = ImagePicker();
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-  final List<String> _units = ['unidad', 'kg', 'g', 'L', 'ml'];
+  final List<String> _units = ['unidad', 'kg', 'g', 'L', 'ml', 'lbs', 'oz'];
 
   @override
   void initState() {
     super.initState();
+
+    // Inicializar las zonas horarias para las notificaciones
     tzdata.initializeTimeZones();
+
     _initializeNotificationPlugin();
+
+    // Verificar el permiso de alarmas exactas
+    _checkExactAlarmPermission();
 
     if (widget.initialProduct != null) {
       _nameController.text = widget.initialProduct!['name'] ?? '';
@@ -58,6 +70,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
       }
     } else if (widget.scannedCode != null) {
       _barcodeController.text = widget.scannedCode!;
+    } else {
+      _isManualAdd = widget.isManualAdd;
     }
   }
 
@@ -71,18 +85,36 @@ class _AddProductScreenState extends State<AddProductScreen> {
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
   }
 
+Future<void> _checkExactAlarmPermission() async {
+  if (Platform.isAndroid && (await _isAndroid12OrHigher())) {
+    try {
+      // Redirigir al usuario a la configuración de la aplicación
+      final intent = AndroidIntent(
+        action: 'android.settings.REQUEST_SCHEDULE_EXACT_ALARM',
+      );
+      await intent.launch();
+    } catch (e) {
+      print('Error al redirigir a la configuración de alarmas exactas: $e');
+    }
+  }
+}
+
+Future<bool> _isAndroid12OrHigher() async {
+  final version = int.tryParse(Platform.version.split(' ')[0]) ?? 0;
+  return version >= 31; // Android 12 es API 31
+}
+
 Future<void> _scheduleNotification(String productName, DateTime expiryDate) async {
   final notificationTime = expiryDate.subtract(const Duration(days: 3));
   final now = DateTime.now();
 
   if (notificationTime.isAfter(now)) {
-    final delay = notificationTime.difference(now);
-
-    Future.delayed(delay, () async {
-      await flutterLocalNotificationsPlugin.show(
+    try {
+      await flutterLocalNotificationsPlugin.zonedSchedule(
         DateTime.now().millisecondsSinceEpoch.remainder(100000),
         'Producto por vencer',
         'El producto "$productName" vencerá pronto.',
+        tz.TZDateTime.from(notificationTime, tz.local),
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'vencimiento_channel',
@@ -92,17 +124,19 @@ Future<void> _scheduleNotification(String productName, DateTime expiryDate) asyn
             priority: Priority.high,
           ),
         ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.time,
       );
-    });
+    } catch (e) {
+      print('Error al programar la notificación: $e');
+    }
   }
 }
 
-
-
 void _guardarProducto() async {
-  if (_isSaving) return; // Evita múltiples envíos
+  if (_isSaving) return;
   setState(() {
-    _isSaving = true; // Indicar que se está guardando
+    _isSaving = true;
   });
 
   final name = _nameController.text.trim();
@@ -115,7 +149,7 @@ void _guardarProducto() async {
       const SnackBar(content: Text('Debes iniciar sesión para guardar un producto')),
     );
     setState(() {
-      _isSaving = false; // Restablecer el estado
+      _isSaving = false;
     });
     return;
   }
@@ -125,7 +159,17 @@ void _guardarProducto() async {
       const SnackBar(content: Text('Por favor, completa todos los campos correctamente')),
     );
     setState(() {
-      _isSaving = false; // Restablecer el estado
+      _isSaving = false;
+    });
+    return;
+  }
+
+  if (_expiryDate == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Por favor, selecciona una fecha de vencimiento')),
+    );
+    setState(() {
+      _isSaving = false;
     });
     return;
   }
@@ -136,26 +180,32 @@ void _guardarProducto() async {
         .doc(user.uid)
         .collection('productos');
 
-    // Verificar si el producto ya existe
-    final querySnapshot = await productosRef.where('barcode', isEqualTo: barcode).get();
+    QuerySnapshot querySnapshot;
+    if (barcode.isNotEmpty) {
+      querySnapshot = await productosRef.where('barcode', isEqualTo: barcode).get();
+    } else {
+      querySnapshot = await productosRef.where('name', isEqualTo: name).get();
+    }
 
     if (querySnapshot.docs.isNotEmpty) {
-      // Si el producto ya existe, actualiza su cantidad
       final existingDoc = querySnapshot.docs.first;
-      final existingData = existingDoc.data();
-      final existingQuantity = int.tryParse(existingData['quantity'] ?? '0') ?? 0;
-      final newQuantity = existingQuantity + int.parse(quantity);
 
-      await productosRef.doc(existingDoc.id).update({'quantity': newQuantity.toString()});
+      await productosRef.doc(existingDoc.id).update({
+        'name': name,
+        'barcode': barcode.isNotEmpty ? barcode : null,
+        'quantity': quantity,
+        'unit': _selectedUnit,
+        'image': _imageFile?.path,
+        'expirationDate': _expiryDate?.toIso8601String(),
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Producto actualizado correctamente')),
       );
     } else {
-      // Si el producto no existe, agrégalo
       final producto = {
         'name': name,
-        'barcode': barcode,
+        'barcode': barcode.isNotEmpty ? barcode : null,
         'quantity': quantity,
         'unit': _selectedUnit,
         'image': _imageFile?.path,
@@ -173,19 +223,22 @@ void _guardarProducto() async {
       );
     }
 
+    // Programar notificación para el producto
+    await _scheduleNotification(name, _expiryDate!);
+
+    // Cerrar la ventana solo si todo fue exitoso
     Navigator.pop(context);
   } catch (e) {
     print('Error al guardar producto: $e');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Error al guardar el producto')),
+      SnackBar(content: Text('Error al guardar el producto: $e')),
     );
   } finally {
     setState(() {
-      _isSaving = false; // Restablecer el estado
+      _isSaving = false;
     });
   }
 }
-
 
   Future<void> _pickImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.camera);
@@ -238,97 +291,106 @@ void _guardarProducto() async {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Agregar Producto')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Nombre del producto'),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                hintText: 'Ej: Leche deslactosada',
-                border: OutlineInputBorder(),
-              ),
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(title: const Text('Agregar Producto')),
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Nombre del producto'),
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              hintText: 'Ej: Leche deslactosada',
+              border: OutlineInputBorder(),
             ),
-            const SizedBox(height: 16),
-            const Text('Código de barras'),
-            TextField(
-              controller: _barcodeController,
-              decoration: const InputDecoration(
-                hintText: 'Ej: 7701234567890',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Cantidad'),
-            Row(
+          ),
+          const SizedBox(height: 16),
+
+          // Mostrar el campo de código de barras solo si no es un agregado manual
+          if (!_isManualAdd)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _quantityController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      hintText: 'Ej: 3',
-                      border: OutlineInputBorder(),
-                    ),
+                const Text('Código de barras'),
+                TextField(
+                  controller: _barcodeController,
+                  decoration: const InputDecoration(
+                    hintText: 'Ej: 7701234567890',
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(width: 10),
-                DropdownButton<String>(
-                  value: _selectedUnit,
-                  items: _units
-                      .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _selectedUnit = value;
-                      });
-                    }
-                  },
-                ),
+                const SizedBox(height: 16),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildExpiryDatePicker(),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Tomar foto'),
-                ),
-                const SizedBox(width: 16),
-                if (_imageFile != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      _imageFile!,
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                    ),
+
+          const Text('Cantidad'),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _quantityController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    hintText: 'Ej: 3',
+                    border: OutlineInputBorder(),
                   ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _guardarProducto, // Deshabilitar si está guardando
-                child: _isSaving
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Guardar'),
+                ),
               ),
+              const SizedBox(width: 10),
+              DropdownButton<String>(
+                value: _selectedUnit,
+                items: _units
+                    .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedUnit = value;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildExpiryDatePicker(),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _pickImage,
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('Foto (opcional)'),
+              ),
+              const SizedBox(width: 16),
+              if (_imageFile != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    _imageFile!,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Center(
+            child: ElevatedButton(
+              onPressed: _isSaving ? null : _guardarProducto,
+              child: _isSaving
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('Guardar'),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

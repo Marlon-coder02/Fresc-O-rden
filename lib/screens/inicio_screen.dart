@@ -7,6 +7,11 @@ import '../widgets/button_plus.dart';
 import 'login_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'shopping_list_screen.dart';
+import 'settings_screen.dart';
+import 'contact_screen.dart';
+import 'about_screen.dart';
+
 
 class InicioScreen extends StatefulWidget {
   const InicioScreen({super.key});
@@ -47,19 +52,24 @@ class _InicioScreenState extends State<InicioScreen> {
             return data;
           }).toList();
 
-          setState(() {
-            productos.addAll(productosActualizados);
-            productosFiltrados = List.from(productos); // Sincronizar ambas listas
-          });
+          if (mounted) {
+            setState(() {
+              productos.addAll(productosActualizados);
+              productosFiltrados = List.from(productos); // Sincronizar ambas listas
+            });
+          }
 
           print('Productos cargados: ${productos.length}');
         } catch (e) {
           print('Error al cargar productos: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error al cargar los productos')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error al cargar los productos')),
+            );
+          }
         }
       }
+
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   List<Map<String, dynamic>> productos = [];
   List<Map<String, dynamic>> productosFiltrados = [];
@@ -260,17 +270,29 @@ void eliminarProductoConConfirmacion(int index) async {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.shopping_cart),
-              title: const Text('Lista de Compras'),
-              onTap: () {
-                Navigator.pop(context);
-              },
+                leading: const Icon(Icons.shopping_cart),
+                title: const Text('Lista de Compras'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ShoppingListScreen(),
+                    ),
+                  );
+                },
             ),
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Configuración'),
               onTap: () {
                 Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsScreen(),
+                  ),
+                );
               },
             ),
             ListTile(
@@ -278,6 +300,12 @@ void eliminarProductoConConfirmacion(int index) async {
               title: const Text('Contacto'),
               onTap: () {
                 Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ContactScreen(),
+                  ),
+                );
               },
             ),
             ListTile(
@@ -285,6 +313,12 @@ void eliminarProductoConConfirmacion(int index) async {
               title: const Text('Acerca de'),
               onTap: () {
                 Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AboutScreen(),
+                  ),
+                );
               },
             ),
             const Divider(),
@@ -321,6 +355,7 @@ void eliminarProductoConConfirmacion(int index) async {
       ),
       floatingActionButton: ButtonPlus(
         onScanComplete: (scannedCode) {
+          // Navegación para agregar con código de barras
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -333,13 +368,14 @@ void eliminarProductoConConfirmacion(int index) async {
           );
         },
         onManualAdd: () {
+          // Navegación para agregar sin código de barras
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => AddProductScreen(
-                scannedCode: null,
                 existingProducts: productos,
                 onSave: agregarOActualizarProducto,
+                isManualAdd: true, // Indicar que es un agregado manual
               ),
             ),
           );
