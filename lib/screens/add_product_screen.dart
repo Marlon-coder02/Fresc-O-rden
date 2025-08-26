@@ -294,49 +294,78 @@ void _guardarProducto() async {
 @override
 Widget build(BuildContext context) {
   return Scaffold(
-    appBar: AppBar(title: const Text('Agregar Producto')),
+    appBar: AppBar(
+      title: const Text('Agregar Producto'),
+      backgroundColor: Colors.green,
+    ),
     body: SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Nombre del producto'),
+          // Nombre del producto
+          const Text(
+            'Nombre del producto',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Ej: Leche deslactosada',
-              border: OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade100,
             ),
           ),
           const SizedBox(height: 16),
 
-          // Mostrar el campo de código de barras solo si no es un agregado manual
+          // Código de barras (si no es manual)
           if (!_isManualAdd)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Código de barras'),
+                const Text(
+                  'Código de barras',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _barcodeController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Ej: 7701234567890',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
             ),
 
-          const Text('Cantidad'),
+          // Cantidad
+          const Text(
+            'Cantidad',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _quantityController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Ej: 3',
-                    border: OutlineInputBorder(),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
                   ),
                 ),
               ),
@@ -344,7 +373,10 @@ Widget build(BuildContext context) {
               DropdownButton<String>(
                 value: _selectedUnit,
                 items: _units
-                    .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+                    .map((unit) => DropdownMenuItem(
+                          value: unit,
+                          child: Text(unit),
+                        ))
                     .toList(),
                 onChanged: (value) {
                   if (value != null) {
@@ -357,14 +389,34 @@ Widget build(BuildContext context) {
             ],
           ),
           const SizedBox(height: 16),
+
+          // Fecha de vencimiento
+          const Text(
+            'Fecha de vencimiento',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
           _buildExpiryDatePicker(),
           const SizedBox(height: 20),
+
+          // Foto del producto
+          const Text(
+            'Foto del producto (opcional)',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               ElevatedButton.icon(
                 onPressed: _pickImage,
                 icon: const Icon(Icons.camera_alt),
-                label: const Text('Foto (opcional)'),
+                label: const Text('Tomar Foto'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
               ),
               const SizedBox(width: 16),
               if (_imageFile != null)
@@ -380,12 +432,24 @@ Widget build(BuildContext context) {
             ],
           ),
           const SizedBox(height: 20),
+
+          // Botón Guardar
           Center(
             child: ElevatedButton(
               onPressed: _isSaving ? null : _guardarProducto,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               child: _isSaving
                   ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Guardar'),
+                  : const Text(
+                      'Guardar',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
         ],

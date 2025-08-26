@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'inicio_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -154,116 +155,185 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: Text(_isLogin ? 'Iniciar Sesión' : 'Crear Cuenta')),
-    body: SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Email
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Correo electrónico',
-                prefixIcon: Icon(Icons.email),
-              ),
-            ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 50),
 
-            const SizedBox(height: 16),
-
-            // Password
-            TextField(
-              controller: _passwordController,
-              obscureText: !_isPasswordVisible,
-              onChanged: evaluatePassword,
-              decoration: InputDecoration(
-                labelText: 'Contraseña',
-                prefixIcon: const Icon(Icons.lock),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+              // Logo o título animado
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOut,
+                child: Text(
+                  _isLogin ? 'Bienvenido A Fresc(o)rden' : 'Crea tu Cuenta',
+                  style: GoogleFonts.poppins(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade600,
                   ),
-                  onPressed: () {
-                    setState(() => _isPasswordVisible = !_isPasswordVisible);
-                  },
+                  textAlign: TextAlign.center,
                 ),
               ),
-            ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 30),
 
-            // Password Criteria
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _passwordCriteria.entries.map((entry) {
-                return Row(
-                  children: [
-                    Icon(
-                      entry.value ? Icons.check_circle : Icons.cancel,
-                      color: entry.value ? Colors.green : Colors.red,
-                      size: 20,
+              // Email
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Correo Electrónico',
+                  prefixIcon: const Icon(Icons.email),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Password
+              TextField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                onChanged: (password) {
+                  setState(() {
+                    _passwordCriteria = {
+                      'Al menos 8 caracteres': password.length >= 8,
+                      'Una letra mayúscula': password.contains(RegExp(r'[A-Z]')),
+                      'Un número': password.contains(RegExp(r'[0-9]')),
+                      'Un carácter especial': password.contains(RegExp(r'[!@#\$&*~]')),
+                    };
+                  });
+                },
+                decoration: InputDecoration(
+                  labelText: 'Contraseña',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
                     ),
-                    const SizedBox(width: 8),
-                    Text(entry.key),
-                  ],
-                );
-              }).toList(),
-            ),
+                    onPressed: () {
+                      setState(() => _isPasswordVisible = !_isPasswordVisible);
+                    },
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 8),
 
-            // Forgot Password
-            TextButton(
-              onPressed: resetPassword,
-              child: const Text('¿Olvidaste tu contraseña?'),
-            ),
+              // Password Criteria
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _isLogin ? 0 : 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _passwordCriteria.entries.map((entry) {
+                    return Row(
+                      children: [
+                        Icon(
+                          entry.value ? Icons.check_circle : Icons.cancel,
+                          color: entry.value ? Colors.green : Colors.red,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(entry.key),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
 
-            const SizedBox(height: 10),
-            const SizedBox(height: 10),
+              const SizedBox(height: 16),
 
-            // Alternar entre login y registro
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _isLogin = !_isLogin;
-                  _passwordCriteria = {
-                    'Al menos 8 caracteres': false,
-                    'Una letra mayúscula': false,
-                    'Un número': false,
-                    'Un carácter especial': false,
-                  };
-                  _passwordController.clear();
-                });
-              },
-              child: Text(_isLogin
-                  ? '¿No tienes cuenta? Registrate Aquí'
-                  : '¿Ya tienes cuenta? Iniciar sesión'),
-                  
-            ),
-                        // Botón de login/registro
-            ElevatedButton.icon(
-              icon: Icon(_isLogin ? Icons.login : Icons.person_add),
-              label: Text(_isLogin ? 'Iniciar Sesión' : 'Registrarse'),
-              onPressed: submitEmailPassword,
-            ),
-            const Divider(height: 32),
+              // Forgot Password
+              if (_isLogin)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: resetPassword,
+                    child: const Text(
+                      '¿Olvidaste tu contraseña?',
+                      style: TextStyle(color: Colors.green),
+                    ),
+                  ),
+                ),
 
-            // Google Sign-in
-            ElevatedButton.icon(
-              icon: const Icon(Icons.g_mobiledata),
-              label: const Text('Ingresar con Google'),
-              onPressed: signInWithGoogle,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            ),
-          ],
+              const SizedBox(height: 20),
+
+              // Botón de login/registro
+              ElevatedButton(
+                onPressed: submitEmailPassword,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  _isLogin ? 'Iniciar Sesión' : 'Registrarse',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Alternar entre login y registro
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _isLogin = !_isLogin;
+                    _passwordCriteria = {
+                      'Al menos 8 caracteres': false,
+                      'Una letra mayúscula': false,
+                      'Un número': false,
+                      'Un carácter especial': false,
+                    };
+                    _passwordController.clear();
+                  });
+                },
+                child: Text(
+                  _isLogin
+                      ? '¿No tienes cuenta? Regístrate aquí'
+                      : '¿Ya tienes cuenta? Inicia sesión',
+                  style: const TextStyle(color: Colors.green),
+                ),
+              ),
+
+              const Divider(height: 32),
+
+              // Google Sign-in
+              ElevatedButton.icon(
+                icon: const Icon(Icons.g_mobiledata),
+                label: const Text('Ingresar con Google'),
+                onPressed: signInWithGoogle,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
